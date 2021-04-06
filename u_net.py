@@ -1,25 +1,31 @@
-from keras.models import Model
 from keras import backend as K
-from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, Activation, UpSampling2D, BatchNormalization,\
-    Conv2DTranspose, Add, Reshape, Lambda
+import tensorflow as tf
+from tensorflow.keras import Model
+from tensorflow.keras.layers import concatenate, Conv2D, MaxPooling2D, Activation, UpSampling2D,\
+    BatchNormalization, Conv2DTranspose, Add, Lambda, Input
 from keras.optimizers import RMSprop
 from losses import bce_dice_loss, dice_loss
-import tensorflow as tf
 from keras.metrics import Accuracy, MeanSquaredError, AUC, Precision, Recall, MeanIoU
+import numpy as np
+from tensorflow.python.ops import bitwise_ops
+
+tf.config.run_functions_eagerly(True)
+tf.config.experimental_run_functions_eagerly(True)
 
 
 def overlay(x):
-    np_mask = x[0].numpy()
-    np_input = x[1].numpy()
-
-    np_input[np_mask == 0] = 0
-
-    tensor_overlay = K.constant(np_input)
-    return tensor_overlay
+    a= tf.dtypes.cast(x[0], tf.int32)
+    b= tf.dtypes.cast(x[1], tf.int32)
+    res = bitwise_ops.bitwise_and(a, b)
+    res = tf.dtypes.cast(res, tf.float32)
+    return res
 
 
 def get_unet_128(input_shape=(128, 128, 3),
                  num_classes=1):
+    tf.config.run_functions_eagerly(True)
+    tf.config.experimental_run_functions_eagerly(True)
+
     input_size = input_shape[0]
     nClasses = 9  # 9 keypoints
     input_height, input_width, sigma = 128, 128, 5
@@ -123,37 +129,30 @@ def get_unet_128(input_shape=(128, 128, 3),
     up1 = Activation('relu')(up1)
     # 128
 
-    output1 = Conv2D(num_classes, (1, 1),
-                     activation='sigmoid', name='output1')(up1)
-
+    output1 = Conv2D(num_classes, (1, 1), activation='sigmoid')(up1)
     lamb = Lambda(overlay)([output1, inputs])
 
-    k1 = Conv2D(64, (3, 3), activation='relu', padding='same',
-                name='block1_conv1')(lamb)
-    k1 = Conv2D(64, (3, 3), activation='relu', padding='same',
-                name='block1_conv2')(k1)
-    block1 = MaxPooling2D((2, 2), strides=(
-        2, 2), name='block1_pool')(k1)
+    k1 = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1', data_format="channels_last")(lamb)
+    k1 = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2', data_format="channels_last")(k1)
+    block1 = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool', data_format="channels_last")(k1)
 
     # Encoder Block 2
-    k2 = Conv2D(128, (3, 3), activation='relu', padding='same',
-                name='block2_conv1')(block1)
-    k2 = Conv2D(128, (3, 3), activation='relu', padding='same',
-                name='block2_conv2')(k2)
-    k2 = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool')(k2)
+    k2 = Conv2D(128, (3, 3), activation='relu', padding='same', name='block2_conv1', data_format="channels_last")(block1)
+    k2 = Conv2D(128, (3, 3), activation='relu', padding='same', name='block2_conv2', data_format="channels_last")(k2)
+    k2 = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool', data_format="channels_last")(k2)
 
     # bottoleneck
     k3 = (Conv2D(32 * 5, (int(input_height / 4), int(input_width / 4)), activation='relu', padding='same',
-                 name="bottleneck_1"))(k2)
-    k3 = (Conv2D(32 * 5, (1, 1), activation='relu', padding='same', name="bottleneck_2"))(
+                 name="bottleneck_1", data_format="channels_last"))(k2)
+    k3 = (Conv2D(32 * 5, (1, 1), activation='relu', padding='same', name="bottleneck_2", data_format="channels_last"))(
         k3)
 
     # upsamping to bring the feature map size to be the same as the one from block1
-    o_block1 = Conv2DTranspose(64, kernel_size=(2, 2), strides=(
-        2, 2), use_bias=False, name='upsample_1')(k3)
+    o_block1 = Conv2DTranspose(64, kernel_size=(2, 2), strides=(2, 2), use_bias=False, name='upsample_1',
+                         data_format="channels_last")(k3)
     o = Add()([o_block1, block1])
-    output2 = Conv2DTranspose(nClasses, kernel_size=(
-        2, 2), strides=(2, 2), use_bias=False, name='output2')(o)
+    output2 = Conv2DTranspose(nClasses, kernel_size=(2, 2), strides=(2, 2), use_bias=False, name='upsample_2',
+                        data_format="channels_last")(o)
 
     model = Model(inputs=inputs, outputs=[output1, output2])
     model.summary()
@@ -163,6 +162,10 @@ def get_unet_128(input_shape=(128, 128, 3),
     #               metrics=[])
 
     model.compile(optimizer=RMSprop(lr=0.001),
-                  loss={'output1': bce_dice_loss, 'output2': 'mse'}, metrics={'output1': [dice_loss], 'output2': []})
+                  loss={'output1': bce_dice_loss, 'output2': 'mse'},
+                  sample_weight_mode={'output1': None, 'output2': 'temporal'},
+                  metrics={'output1': [dice_loss, MeanIoU(2)],
+                           'output2': [Accuracy(), MeanSquaredError(), AUC(),
+                                       Precision(), Recall()]})
 
     return input_size, model
