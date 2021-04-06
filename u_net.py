@@ -7,17 +7,13 @@ from keras.optimizers import RMSprop
 from losses import bce_dice_loss, dice_loss
 from keras.metrics import Accuracy, MeanSquaredError, AUC, Precision, Recall, MeanIoU
 import numpy as np
-from tensorflow.python.ops import bitwise_ops
 
 tf.config.run_functions_eagerly(True)
 tf.config.experimental_run_functions_eagerly(True)
 
 
 def overlay(x):
-    a= tf.dtypes.cast(x[0], tf.int32)
-    b= tf.dtypes.cast(x[1], tf.int32)
-    res = bitwise_ops.bitwise_and(a, b)
-    res = tf.dtypes.cast(res, tf.float32)
+    res = x[0] * x[1]
     return res
 
 
@@ -169,3 +165,5 @@ def get_unet_128(input_shape=(128, 128, 3),
                                        Precision(), Recall()]})
 
     return input_size, model
+
+# get_unet_128()
