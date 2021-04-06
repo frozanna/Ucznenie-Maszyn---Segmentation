@@ -132,7 +132,7 @@ def valid_generator():
             x_batch = np.array(x_batch, np.float32) / 255
             y_batch = np.array(y_batch, np.float32) / 255
 
-            key_points_batch = np.array(key_points_batch, np.float32) / 255
+            key_points_batch = np.array(key_points_batch, np.float32)
 
             yield x_batch, [y_batch, key_points_batch]
 
