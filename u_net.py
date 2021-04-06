@@ -125,7 +125,7 @@ def get_unet_128(input_shape=(128, 128, 3),
     up1 = Activation('relu')(up1)
     # 128
 
-    output1 = Conv2D(num_classes, (1, 1), activation='sigmoid')(up1)
+    output1 = Conv2D(num_classes, (1, 1), activation='sigmoid', name='output1')(up1)
     lamb = Lambda(overlay)([output1, inputs])
 
     k1 = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1', data_format="channels_last")(lamb)
@@ -147,7 +147,7 @@ def get_unet_128(input_shape=(128, 128, 3),
     o_block1 = Conv2DTranspose(64, kernel_size=(2, 2), strides=(2, 2), use_bias=False, name='upsample_1',
                          data_format="channels_last")(k3)
     o = Add()([o_block1, block1])
-    output2 = Conv2DTranspose(nClasses, kernel_size=(2, 2), strides=(2, 2), use_bias=False, name='upsample_2',
+    output2 = Conv2DTranspose(nClasses, kernel_size=(2, 2), strides=(2, 2), use_bias=False, name='output2',
                         data_format="channels_last")(o)
 
     model = Model(inputs=inputs, outputs=[output1, output2])
@@ -159,10 +159,8 @@ def get_unet_128(input_shape=(128, 128, 3),
 
     model.compile(optimizer=RMSprop(lr=0.001),
                   loss={'output1': bce_dice_loss, 'output2': 'mse'},
-                  sample_weight_mode={'output1': None, 'output2': 'temporal'},
                   metrics={'output1': [dice_loss, MeanIoU(2)],
-                           'output2': [Accuracy(), MeanSquaredError(), AUC(),
-                                       Precision(), Recall()]})
+                           'output2': [Accuracy(), MeanSquaredError()]})
 
     return input_size, model
 
