@@ -53,7 +53,6 @@ def train_generator():
             end = min(start + batch_size, len(train_split))
             ids_train_batch = train_split[start:end]
             for id in ids_train_batch:
-                id = '000293'
                 img = cv2.imread(train_img_path_template.format(id))
                 img = cv2.resize(img, (input_size, input_size))
                 mask = cv2.imread(train_img_mask_path_template.format(
@@ -61,7 +60,7 @@ def train_generator():
                 mask = cv2.resize(mask, (input_size, input_size))
 
                 key_points = generate_hm(
-                    input_size, input_size, train_keypoints[int(id)], s=5)
+                    input_size, input_size, train_keypoints[int(id)], s=5) * 1000
                 # for i in range(9):
                 #     print(key_points.shape)
                 #     print(key_points.shape)
@@ -97,7 +96,7 @@ def train_generator():
                 y_batch.append(mask)
             x_batch = np.array(x_batch, np.float32) / 255
             y_batch = np.array(y_batch, np.float32) / 255
-            key_points_batch = np.array(key_points_batch, np.float32) / 255
+            key_points_batch = np.array(key_points_batch, np.float32)
             yield x_batch, [y_batch, key_points_batch]
 
 
@@ -120,10 +119,7 @@ def valid_generator():
                 mask = cv2.resize(mask, (input_size, input_size))
                 mask = np.expand_dims(mask, axis=2)
                 key_points = generate_hm(
-                    input_size, input_size, train_keypoints[int(id)], s=5)
-                for i in range(9):
-                    key_points[:, :, i] = cv2.resize(
-                        key_points[:, :, i], (input_size, input_size))
+                    input_size, input_size, train_keypoints[int(id)], s=5) * 1000
 
                 key_points = np.expand_dims(key_points, axis=3)
                 key_points_batch.append(key_points)
@@ -151,12 +147,11 @@ callbacks = [
                       mode='max'),
     ModelCheckpoint(monitor='val_output1_dice_loss',
                     filepath='weights/best_weights.hdf5',
-                    save_best_only=True,
                     save_weights_only=True,
                     mode='max'),
     TensorBoard(log_dir='logs')]
 
-model.fit_generator(generator=train_generator(),
+history = model.fit_generator(generator=train_generator(),
                     steps_per_epoch=np.ceil(
                         float(len(train_split)) / float(batch_size)),
                     epochs=epochs,
@@ -164,3 +159,7 @@ model.fit_generator(generator=train_generator(),
                     callbacks=callbacks,
                     validation_data=valid_generator(),
                     validation_steps=np.ceil(float(len(valid_split)) / float(batch_size)))
+
+print(history.history)
+
+np.save('my_history4.npy',history.history)
